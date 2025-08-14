@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watermark Image Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .input-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #progress {
+            margin-top: 20px;
+            text-align: center;
+            color: #555;
+        }
+        #downloadLink {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #downloadLink a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        #downloadLink a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Watermark Image Processor</h1>
+        <div class="input-group">
+            <label for="watermarkInput">Upload Watermark Image</label>
+            <input type="file" id="watermarkInput" accept="image/*">
+        </div>
+        <div class="input-group">
+            <label for="folderInput">Upload Folder of Images</label>
+            <input type="file" id="folderInput" accept="image/*" multiple webkitdirectory>
+        </div>
+        <button onclick="processImages()">Add Watermark & Download</button>
+        <div id="progress"></div>
+        <div id="downloadLink"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        async function processImages() {
+            const watermarkInput = document.getElementById('watermarkInput');
+            const folderInput = document.getElementById('folderInput');
+            const progress = document.getElementById('progress');
+            const downloadLink = document.getElementById('downloadLink');
+
+            if (!watermarkInput.files[0] || !folderInput.files.length) {
+                progress.textContent = 'Please upload both a watermark image and a folder of images.';
+                return;
+            }
+
+            progress.textContent = 'Processing images...';
+            downloadLink.innerHTML = '';
+
+            const watermarkImg = await loadImage(URL.createObjectURL(watermarkInput.files[0]));
+            const zip = new JSZip();
+
+            let processedCount = 0;
+            const totalImages = Array.from(folderInput.files).filter(file => file.type.startsWith('image/')).length;
+
+            for (const file of folderInput.files) {
+                if (!file.type.startsWith('image/')) continue;
+
+                const img = await loadImage(URL.createObjectURL(file));
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Set canvas size to input image size
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                // Draw the original image
+                ctx.drawImage(img, 0, 0);
+
+                // Calculate watermark size (30% of image width, maintaining aspect ratio)
+                const watermarkWidth = img.width * 0.3;
+                const watermarkHeight = (watermarkWidth / watermarkImg.width) * watermarkImg.height;
+
+                // Calculate position to center the watermark
+                const x = (img.width - watermarkWidth) / 2;
+                const y = (img.height - watermarkHeight) / 2;
+
+                // Draw watermark with 30% opacity
+                ctx.globalAlpha = 0.3;
+                ctx.drawImage(watermarkImg, x, y, watermarkWidth, watermarkHeight);
+                ctx.globalAlpha = 1.0;
+
+                // Convert canvas to blob and add to zip using relative path to maintain structure
+                const blob = await canvasToBlob(canvas);
+                const relativePath = file.webkitRelativePath || file.name;
+                zip.file(relativePath, blob);
+
+                processedCount++;
+                progress.textContent = `Processed ${processedCount} of ${totalImages} images...`;
+            }
+
+            if (processedCount === 0) {
+                progress.textContent = 'No valid images found in the folder.';
+                return;
+            }
+
+            // Generate zip file and trigger download
+            const content = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'watermarked_images.zip';
+            a.textContent = 'Download Watermarked Images';
+            downloadLink.innerHTML = '';
+            downloadLink.appendChild(a);
+            progress.textContent = 'Processing complete!';
+        }
+
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+        }
+
+        function canvasToBlob(canvas) {
+            return new Promise((resolve) => {
+                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.9);
+            });
+        }
+    </script>
+</body>
+</html>
